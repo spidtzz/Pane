@@ -16,6 +16,10 @@ const totp=(sec,t)=>{const c=Buffer.alloc(8);c.writeBigUInt64BE(BigInt(Math.floo
 const okc=(sec,c)=>[-1,0,1].some(d=>totp(sec,Date.now()+d*3e4)===String(c).trim());
 const ve=e=>e==='2FA'?'Enter your 6-digit code.':e;
 
+const VR=()=>(process.env.VAULT_ROOTS||'').split(',').map(x=>x.trim()).filter(Boolean),inside=(p,x)=>{try{const q=fs.realpathSync(x);return p===q||p.startsWith(q+path.sep)}catch{return false}};
+async function legacy(u,d,n){const c=[];try{for(const e of await fsp.readdir(U(u)+'/vaults',{withFileTypes:true}))if(e.isDirectory())c.push(`${U(u)}/vaults/${e.name}/${n}.json`)}catch{}for(const k of Object.keys(d.ext||{}))c.push(`${d.ext[k]}/.pane/${n}.json`);for(const f of c){try{return await fsp.readFile(f,'utf8')}catch{}}return null}
+/** All vault names for a user: folders under vaults/ plus registered external folders. */
+async function vaultList(u,d){const v=(await fsp.readdir(U(u)+'/vaults',{withFileTypes:true})).filter(e=>e.isDirectory()).map(e=>e.name).filter(n=>!(d.ext&&d.ext[n]));return[...v,...Object.keys(d.ext||{})]}
 async function verify(u,pw,code){
  const d=ok(u)&&await rj(U(u)+'/user.json'),f=F[u]||(F[u]={n:0,t:0});
  if(f.n>=8&&Date.now()-f.t<6e5)return 'Too many attempts. Try again in a few minutes.';
@@ -54,8 +58,8 @@ http.createServer(async(req,res)=>{try{
  if(M==='GET'&&(P==='/'||P==='/index.html'))return send(res,200,await fsp.readFile(path.join(__dirname,'index.html'),'utf8'),'text/html');
  if(P==='/manifest.json')return send(res,200,{name:'Pane',short_name:'Pane',start_url:'/',display:'standalone',background_color:'#0b1220',theme_color:'#0b1220',icons:[{src:'/icon.svg',sizes:'any',type:'image/svg+xml',purpose:'any'}]},'application/manifest+json');
  if(P==='/icon.svg')return send(res,200,'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="#0a84ff"/><rect x="15" y="12" width="34" height="40" rx="8" fill="#fff" fill-opacity=".88"/><path d="M22 24h20M22 32h20M22 40h12" stroke="#0a84ff" stroke-width="3" stroke-linecap="round"/></svg>','image/svg+xml');
- const fm=P.match(/^\/cal\/([\w-]+)\/([\w-]+)\/(\w+)\.ics$/);
- if(fm){const d=ok(fm[1])&&await rj(U(fm[1])+'/user.json');if(!d||tok(d,fm[2])!==fm[3])return send(res,404,'Not found','text/plain');const ex=d.ext&&d.ext[fm[2]];return send(res,200,ics(await rj(`${vdir(fm[1],fm[2],d)}${ex?'/.pane':''}/events.json`)||[],fm[2]),'text/calendar')}
+ const fm=P.match(/^\/cal\/([\w-]+)\/(?:([\w-]+)\/)?(\w+)\.ics$/);
+ if(fm){const d=ok(fm[1])&&await rj(U(fm[1])+'/user.json');if(!d||tok(d,fm[2]||'all')!==fm[3])return send(res,404,'Not found','text/plain');let t=null;try{t=await fsp.readFile(`${U(fm[1])}/app/events.json`,'utf8')}catch{}if(t==null)t=await legacy(fm[1],d,'events');let ev=[];try{ev=JSON.parse(t)||[]}catch{}return send(res,200,ics(ev,'Pane'),'text/calendar')}
  if(!P.startsWith('/api/'))return send(res,404,{error:'Not found'});
  const ck=Object.fromEntries((req.headers.cookie||'').split(';').map(c=>c.trim().split('='))),sec=req.headers['x-forwarded-proto']==='https'?'; Secure':'';
  const b=M==='GET'||M==='DELETE'?'':await body(req),J=()=>{try{return JSON.parse(b||'{}')}catch{return{}}};
@@ -76,11 +80,33 @@ http.createServer(async(req,res)=>{try{
  if(!ud)return send(res,401,{error:'Sign in required.'});
  if(P==='/api/logout'){S.delete(ck.s);res.setHeader('set-cookie','s=; Max-Age=0; Path=/');return send(res,200,{ok:1})}
  if(P==='/api/unlock'){const{pw,code}=J(),e=await verify(me,pw,code);return e?send(res,401,{error:ve(e),need2fa:e==='2FA'}):send(res,200,{ok:1})}
- if(P==='/api/me'){const v=(await fsp.readdir(U(me)+'/vaults',{withFileTypes:true})).filter(e=>e.isDirectory()).map(e=>e.name).filter(n=>!(ud.ext&&ud.ext[n])),x=Object.keys(ud.ext||{});return send(res,200,{user:me,vaults:[...v,...x],ext:Object.fromEntries(x.map(k=>[k,ud.ext[k]])),totp:!!ud.totp})}
+ if(P==='/api/me')return send(res,200,{user:me,display:ud.display||'',avatar:ud.avatar||'',vaults:await vaultList(me,ud),ext:Object.fromEntries(Object.keys(ud.ext||{}).map(k=>[k,ud.ext[k]])),totp:!!ud.totp});
  if(P==='/api/vault'){const n=J().name;if(!ok(n))return send(res,400,{error:'Use letters, numbers, - and _.'});if(fs.existsSync(vdir(me,n,ud)))return send(res,409,{error:'That vault already exists.'});await fsp.mkdir(vdir(me,n)+'/notes',{recursive:true});return send(res,200,{ok:1})}
  if(P==='/api/2fa/setup'){ud.pending=b32(crypto.randomBytes(10));await fsp.writeFile(U(me)+'/user.json',JSON.stringify(ud));return send(res,200,{secret:ud.pending})}
  if(P==='/api/2fa/enable'){if(!ud.pending||!okc(ud.pending,J().code))return send(res,400,{error:'That code is not right. Try the next one.'});ud.totp=ud.pending;delete ud.pending;await fsp.writeFile(U(me)+'/user.json',JSON.stringify(ud));return send(res,200,{ok:1})}
  if(P==='/api/2fa/off'){const{pw,code}=J(),e=await verify(me,pw,code);if(e)return send(res,401,{error:ve(e)});ud.totp=null;await fsp.writeFile(U(me)+'/user.json',JSON.stringify(ud));return send(res,200,{ok:1})}
+ if(P==='/api/profile'){const j=J();if(j.display!==undefined)ud.display=String(j.display).trim().slice(0,40);
+  if(j.avatar!==undefined){if(!j.avatar)delete ud.avatar;else if(typeof j.avatar==='string'&&j.avatar.length<4e5&&/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(j.avatar))ud.avatar=j.avatar;else return send(res,400,{error:'That picture is not supported.'})}
+  await fsp.writeFile(U(me)+'/user.json',JSON.stringify(ud));return send(res,200,{display:ud.display||'',avatar:ud.avatar||''})}
+ if(P==='/api/vault/rename'){const{name,to}=J();if(!ok(to))return send(res,400,{error:'Use letters, numbers, - and _.'});
+  const ext=ud.ext&&ud.ext[name];if(!ext&&!(ok(name)&&fs.existsSync(vdir(me,name))))return send(res,404,{error:'Vault not found.'});
+  if(fs.existsSync(vdir(me,to,ud)))return send(res,409,{error:'That name is already used.'});
+  if(ext){const e={};for(const k in ud.ext)e[k===name?to:k]=ud.ext[k];ud.ext=e;await fsp.writeFile(U(me)+'/user.json',JSON.stringify(ud))}else await fsp.rename(vdir(me,name),vdir(me,to));
+  return send(res,200,{ok:1})}
+ if(P==='/api/vault/delete'){const n=J().name;if(ud.ext&&ud.ext[n])return send(res,400,{error:'Folder vaults are removed, not deleted.'});
+  if(!ok(n)||!fs.existsSync(vdir(me,n)))return send(res,404,{error:'Vault not found.'});
+  if((await vaultList(me,ud)).length<2)return send(res,400,{error:'Keep at least one vault.'});
+  await fsp.rm(vdir(me,n),{recursive:true,force:true});return send(res,200,{ok:1})}
+ const dm=P.match(/^\/api\/data\/(todos|events|cats|cheat|links)$/);
+ if(dm){const f=`${U(me)}/app/${dm[1]}.json`;
+  if(M==='GET'){let t=null;try{t=await fsp.readFile(f,'utf8')}catch{}if(t==null)t=await legacy(me,ud,dm[1]);return t==null?send(res,404,{error:'Not found.'}):send(res,200,t,'text/plain')}
+  if(M==='PUT'){await fsp.mkdir(path.dirname(f),{recursive:true});await fsp.writeFile(f,b);return send(res,200,{ok:1})}}
+ if(P==='/api/feed')return send(res,200,{url:`/cal/${me}/${tok(ud,'all')}.ics`});
+ if(P==='/api/fs'){const roots=VR();let p=q.get('path')||roots[0]||require('os').homedir();
+  try{p=fs.realpathSync(path.resolve(p));if(!fs.statSync(p).isDirectory())throw 0}catch{return send(res,400,{error:'That folder does not exist.'})}
+  if(roots.length&&!roots.some(x=>inside(p,x)))return send(res,403,{error:'That folder is outside the allowed VAULT_ROOTS.'});
+  let ds;try{ds=(await fsp.readdir(p,{withFileTypes:true})).filter(e=>e.isDirectory()&&!e.name.startsWith('.')).map(e=>e.name).sort((a,b)=>a.localeCompare(b))}catch{return send(res,403,{error:'The server cannot read that folder.'})}
+  const par=path.dirname(p);return send(res,200,{path:p,parent:par!==p?par:null,sep:path.sep,dirs:ds.map(n=>({n,v:fs.existsSync(path.join(p,n,'.obsidian'))}))})}
  if(P==='/api/vault/open'){const roots=(process.env.VAULT_ROOTS||'').split(',').map(x=>x.trim()).filter(Boolean);
   const j=J();let r;try{r=fs.realpathSync(path.resolve(String(j.path||'')));if(!fs.statSync(r).isDirectory())throw 0;fs.accessSync(r,fs.constants.R_OK|fs.constants.W_OK)}catch{return send(res,400,{error:'That folder does not exist or the server cannot read and write it.'})}
   if(roots.length&&!roots.some(x=>{try{const q=fs.realpathSync(x);return r===q||r.startsWith(q+path.sep)}catch{return false}}))return send(res,403,{error:'That folder is outside the allowed VAULT_ROOTS.'});
