@@ -3,7 +3,7 @@ An app for notes with markdown, todo-list, calendar system, link collection and 
 
 ---
 ## How to run
-Please install node.js for you operating system for choice as it is required for running the server application then follow these steps:
+Please install node.js for your operating system of choice as it is required for running the server application then follow these steps:
 1. Clone this repository in your prefered way.
 2. Open the "Pane" folder in your terminal.
 3. Launch the server with this command.
