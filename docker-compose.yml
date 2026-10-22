@@ -1,0 +1,17 @@
+services:
+  pane:
+    # Build locally from this folder, or swap for the published image:
+    #   image: ghcr.io/spidtzz/pane:latest
+    build: .
+    container_name: pane
+    restart: unless-stopped
+    ports:
+      - "${PANE_PORT:-3000}:3000"
+    environment:
+      SIGNUP: "${SIGNUP:-1}"
+      # VAULT_ROOTS: /vaults
+    volumes:
+      - ./data:/data
+      # To open an existing notes folder (Obsidian, Syncthing…) as a vault, mount it and
+      # add it from Settings → Import a folder from the server:
+      # - /path/to/your/notes:/vaults/notes

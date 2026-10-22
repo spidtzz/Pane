@@ -1,0 +1,23 @@
+[Unit]
+Description=Pane (self-hosted notes, tasks and calendar)
+After=network.target
+
+[Service]
+Type=simple
+User=pane
+Group=pane
+WorkingDirectory=/opt/pane
+Environment=PORT=3000
+Environment=DATA=/var/lib/pane
+# Environment=SIGNUP=0
+# Environment=VAULT_ROOTS=/srv/notes
+ExecStart=/usr/bin/node /opt/pane/server.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/var/lib/pane
+
+[Install]
+WantedBy=multi-user.target

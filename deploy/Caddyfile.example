@@ -1,0 +1,4 @@
+# HTTPS reverse proxy (automatic certificates). Replace the domain.
+notes.example.com {
+	reverse_proxy 127.0.0.1:3000
+}
