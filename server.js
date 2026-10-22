@@ -434,7 +434,9 @@ http.createServer(async(req, res) => {
         if ((q.get('p') || '').endsWith('/')) await fsp.mkdir(f, {recursive: true});
         else {
           await fsp.mkdir(path.dirname(f), {recursive: true});
-          await fsp.writeFile(f, b)
+          await fsp.writeFile(f, b);
+          const mt = +q.get('mt');
+          if (mt > 9e11 && mt < Date.now()+864e5) await fsp.utimes(f, new Date(mt), new Date(mt))
         }
         return send(res, 200, {ok: 1})
       }
@@ -445,6 +447,7 @@ http.createServer(async(req, res) => {
     }
     send(res, 404, {error: 'Not found'})
   } catch (e) {
+    if (e !== 0 && !(e && e.code === 'ENOENT')) console.error(new Date().toISOString(), req.method, req.url, e && e.stack || e);
     send(res, e === 0 ? 400 : e && e.code === 'ENOENT' ? 404 : 500, {error: e && e.code === 'ENOENT' ? 'Not found.' : 'Request failed.'})
   }
 }).listen(PORT, HOST, () => console.log(`Pane running at http://localhost:${PORT}  (data: ${DATA})`));

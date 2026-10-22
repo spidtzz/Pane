@@ -36,13 +36,13 @@ cd pane
 docker compose up -d
 ```
 
-Open `http://<server-ip>:3000` and create your account. Your data lives in `./data`.
+Open `http://<server-ip>:3000` and create your account. Your data lives in a Docker volume named `pane-data`.
 
 Or run the prebuilt image:
 
 ```bash
 docker run -d --name pane --restart unless-stopped \
-  -p 3000:3000 -v "$PWD/data:/data" ghcr.io/spidtzz/pane:latest
+  -p 3000:3000 -v pane-data:/data ghcr.io/spidtzz/pane:latest
 ```
 
 ### Linux service (no Docker)
@@ -114,9 +114,13 @@ The builds are not code-signed, so the first launch needs one extra step:
 
 Use **Server → Change server…** to connect to a different instance. To build it yourself, see [desktop/README.md](desktop/README.md).
 
+## Troubleshooting
+
+- **"Request failed" when creating an account (Docker)**: the data folder is not writable by the container. This happens if you mounted a host folder such as `./data` that Docker created as root. Fix it with `mkdir -p data && sudo chown -R 1000:1000 data && docker compose restart`, or use the default named volume. `docker logs pane` shows the exact error.
+
 ## Backups
 
-You can copy the data folder while Pane runs (`./data`, or `/var/lib/pane` for the systemd install). Notes are plain `.md` files under `users/<name>/vaults/<vault>/notes/`. Accounts, tasks, events and links are small JSON files next to them.
+You can copy the data folder while Pane runs (`/var/lib/pane` for the systemd install; with Docker run `docker cp pane:/data ./pane-backup`). Notes are plain `.md` files under `users/<name>/vaults/<vault>/notes/`. Accounts, tasks, events and links are small JSON files next to them.
 
 ## Security notes
 

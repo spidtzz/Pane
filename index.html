@@ -2989,7 +2989,7 @@ const api = async(u, o = {}) => {
   return d
 };
 // File URL helpers: per-vault note files, or account-level data (todos, events, ...).
-const fu = p => /^(todos|events|cats|cheat|links)\.json$/.test(p) ? `/api/data/${p.slice(0,-5)}` : `/api/v/${V}/f?p=${encodeURIComponent(p)}`, rf = p => api(fu(p)), wf = (p, s) => api(fu(p), {method: 'PUT', body: s}), rm = p => api(fu(p), {method: 'DELETE'});
+const fu = p => /^(todos|events|cats|cheat|links)\.json$/.test(p) ? `/api/data/${p.slice(0,-5)}` : `/api/v/${V}/f?p=${encodeURIComponent(p)}`, rf = p => api(fu(p)), wf = (p, s, mt) => api(fu(p)+(mt && fu(p).includes('?p=') ? '&mt='+Math.round(mt) : ''), {method: 'PUT', body: s}), rm = p => api(fu(p), {method: 'DELETE'});
 // Read a JSON file, or return the default.
 const rj = async(p, d) => {
   try {
@@ -5322,6 +5322,11 @@ async function newVault() {
   }
 }
 // Upload a folder from this device as a new vault (only .md files are kept).
+// Imported notes: Pane notes use their first line as the note name, so make sure it matches the file name.
+const withName = (t, file) => {
+  const n = file.replace(/\.(md|txt)$/i, ''), L = t.replace(/^\uFEFF/, '').split('\n'), i = L.findIndex(x => x.trim()), h = i < 0 ? '' : L[i].replace(/^#+\s*/, '').trim();
+  return h.toLowerCase() === n.trim().toLowerCase() ? t.replace(/^\uFEFF/, '') : n+'\n\n'+t.replace(/^\uFEFF/, '').replace(/^\s*\n/, '')
+};
 async function upFolder(inp) {
   const all = [...inp.files], fs = all.filter(f => /\.md$/i.test(f.name) && !(f.webkitRelativePath || f.name).split('/').some(x => x.startsWith('.')));
   inp.value = '';
@@ -5335,7 +5340,7 @@ async function upFolder(inp) {
     const run = async() => {
       while (i < fs.length) {
         const f = fs[i++], rel = (f.webkitRelativePath || f.name).split('/').slice(1).join('/') || f.name;
-        await api(`/api/v/${n}/f?p=${encodeURIComponent('notes/'+rel)}`, {method: 'PUT', body: await f.text()});
+        await api(`/api/v/${n}/f?p=${encodeURIComponent('notes/'+rel)}&mt=${f.lastModified}`, {method: 'PUT', body: withName(await f.text(), f.name)});
         if (++d % 10 == 0) toast(`Uploading ${d} / ${fs.length}…`)
       }
     };
@@ -5461,7 +5466,7 @@ async function imp(inp) {
         continue
       }
     }
-    await wf(NR()+f.name.replace(/\.txt$/, '.md'), t)
+    await wf(NR()+f.name.replace(/\.txt$/, '.md'), NR() ? withName(t, f.name) : t, f.lastModified)
   }
   toast('Imported');
   // Switch tab.

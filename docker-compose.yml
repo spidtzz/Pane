@@ -11,7 +11,12 @@ services:
       SIGNUP: "${SIGNUP:-1}"
       # VAULT_ROOTS: /vaults
     volumes:
-      - ./data:/data
+      - pane-data:/data
+      # Prefer a visible folder? Replace the line above with ./data:/data and run once:
+      #   mkdir -p data && sudo chown 1000:1000 data
       # To open an existing notes folder (Obsidian, Syncthing…) as a vault, mount it and
       # add it from Settings → Import a folder from the server:
       # - /path/to/your/notes:/vaults/notes
+
+volumes:
+  pane-data:
